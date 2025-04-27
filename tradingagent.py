@@ -119,14 +119,24 @@ class TradingAgent:
         self.memory = ReplayBuffer(self.memory_size)
 
     def _get_action(self, state, is_training=True):
-        # Epsilon-greedy action selection
-        if is_training and np.random.rand() <= self.epsilon:
-            return np.random.randint(0, self.output_dim)
-
+        # Categorical action selection with softmax
         with torch.no_grad():
             state_tensor = torch.FloatTensor(state).to(self.device).unsqueeze(0)
             q_values = self.model(state_tensor)
-            return q_values.argmax().item()
+
+            # Apply softmax with temperature parameter
+            temperature = max(0.5, self.epsilon) if is_training else 0.1
+            softmax_probs = torch.nn.functional.softmax(q_values / temperature, dim=1)
+
+            # Sample from categorical distribution in training mode
+            if is_training:
+                dist = torch.distributions.Categorical(softmax_probs)
+                action = dist.sample().item()
+            else:
+                # In testing, just take the best action
+                action = softmax_probs.argmax().item()
+
+            return action
 
     def _update_model(self):
         if len(self.memory) < self.batch_size * self.n_batches * 2:
